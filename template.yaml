@@ -1,0 +1,112 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  maxwell-api
+
+  Sample SAM Template for maxwell-api
+
+Globals:
+  Function:
+    Timeout: 10
+    MemorySize: 128
+    Runtime: python3.9
+    Architectures:
+      - x86_64
+    Handler: app.lambda_handler
+  Api:
+    Auth:
+      DefaultAuthorizer: CognitoAuth
+      Authorizers:
+        CognitoAuth:
+          UserPoolArn:
+            Fn::GetAtt:
+              - MaxwellAppUserPool
+              - Arn
+
+Resources:
+  ExportApi:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: export-api/
+      Events:
+        Export:
+          Type: Api
+          Properties:
+            Path: /export
+            Method: post
+      Policies:
+        - DynamoDBWritePolicy:
+            TableName: !Ref BackupTable
+  ImportApi:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: import-api/
+      Events:
+        Import:
+          Type: Api
+          Properties:
+            Path: /import
+            Method: post
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref BackupTable
+  BackupTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      AttributeDefinitions:
+        - AttributeName: "table"
+          AttributeType: "S"
+        - AttributeName: "id"
+          AttributeType: "S"
+      KeySchema:
+        - AttributeName: "table"
+          KeyType: "HASH"
+        - AttributeName: "id"
+          KeyType: "RANGE"
+      ProvisionedThroughput:
+        ReadCapacityUnits: 5
+        WriteCapacityUnits: 5
+      TableName: maxwell-app-backup
+  MaxwellAppUserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      MfaConfiguration: "OFF"
+      UserPoolName: maxwell-app-user-pool
+  MaxwellAppUserPoolClient:
+    Type: "AWS::Cognito::UserPoolClient"
+    Properties:
+      ClientName: maxwell-app-client
+      ExplicitAuthFlows:
+        - ALLOW_USER_PASSWORD_AUTH
+        - ALLOW_ADMIN_USER_PASSWORD_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+        - ALLOW_USER_SRP_AUTH
+        - ALLOW_CUSTOM_AUTH
+      GenerateSecret: false
+      UserPoolId: !Ref MaxwellAppUserPool
+
+Outputs:
+  ExportApi:
+    Description: "API Gateway endpoint URL for Prod stage allowing to export app data"
+    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/export/"
+  ExportFunction:
+    Description: "ExportApi Lambda Function ARN"
+    Value: !GetAtt ExportApi.Arn
+  ExportFunctionIamRole:
+    Description: "Implicit IAM Role created for export function"
+    Value: !GetAtt ExportApiRole.Arn
+  ImportApi:
+    Description: "API Gateway endpoint URL for Prod stage allowing to import backup data"
+    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/import/"
+  ImportFunction:
+    Description: "ImportApi Lambda Function ARN"
+    Value: !GetAtt ImportApi.Arn
+  ImportFunctionIamRole:
+    Description: "Implicit IAM Role created for import function"
+    Value: !GetAtt ImportApiRole.Arn
+  UserPoolId:
+    Description: "Maxwell app User Pool ID"
+    Value: !Ref MaxwellAppUserPool
+  UserPoolClientId:
+    Description: "Maxwell app User Pool Client ID"
+    Value: !Ref MaxwellAppUserPoolClient
